@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Fleet Broadcast</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: #000;
+}
+
+/*
+  #wrap scales the 1920×1080 design to fit any OBS window size.
+  JS calculates scale on every resize.
+*/
+#wrap {
+  width: 1920px;
+  height: 1080px;
+  transform-origin: top left;
+  position: absolute;
+  top: 0; left: 0;
+  font-family: 'Courier New', monospace;
+}
+
+/* ── SCREEN CONTENT fills the full wrap ──────────────────
+   The terminal-frame.png sits on top as a non-interactive
+   overlay. Content shows through the image's screen hole.
+   ──────────────────────────────────────────────────────── */
+#screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  overflow: hidden;
+  background: #020c0c;
+}
+
+/* ── TERMINAL FRAME IMAGE — overlay on top of content ─── */
+#frame-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;   /* stretches to fill exactly 1920×1080 */
+  pointer-events: none;
+  z-index: 50;
+  display: block;
+}
+/* Hide gracefully if image fails to load (file not added yet) */
+#frame-overlay[src="assets/terminal-frame.png"]:not([complete]) { opacity: 0; }
+
+/* ── FLASH ───────────────────────────────────────────────
+   Sits above frame overlay so the flash is visible
+   ──────────────────────────────────────────────────────── */
+#flash {
+  position: absolute; inset: 0;
+  z-index: 60;
+  background: rgba(0,205,170,.16);
+  opacity: 0; pointer-events: none;
+  transition: opacity .08s;
+}
+
+/* ════════════════════════════════════════════════════════
+   DATA PANELS — always visible, left and right
+   ════════════════════════════════════════════════════════ */
+.data-panel {
+  width: 310px;
+  height: 100%;
+  background: rgba(0,6,5,0.88);
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+  z-index: 1;
+}
+.data-panel.L { border-right: 1px solid rgba(0,180,155,.1); }
+.data-panel.R { border-left:  1px solid rgba(0,180,155,.1); }
+
+.pnoise { position:absolute; inset:0; opacity:.032; z-index:1; pointer-events:none; }
+.pscan  { position:absolute; inset:0; background:repeating-linear-gradient(to bottom,transparent 0,transparent 2px,rgba(0,0,0,.13) 2px,rgba(0,0,0,.13) 3px); pointer-events:none; z-index:2; }
+.pglitch { position:absolute;inset:0;z-index:3;background:rgba(0,250,195,.02);opacity:0;pointer-events:none;animation:pGlitch 12s linear infinite; }
+@keyframes pGlitch{ 0%,100%{opacity:0}94%{opacity:0;transform:none}95%{opacity:1;transform:translateX(2px)}96%{opacity:0} }
+
+.pin { position:relative;z-index:5;padding:13px 11px;height:100%;display:flex;flex-direction:column;gap:9px; }
+
+.pblock { border:1px solid rgba(0,190,160,.16);padding:7px 8px;position:relative;background:rgba(0,190,160,.02);flex-shrink:0; }
+.pblock.grow { flex:1;overflow:hidden; }
+.pblock::before { content:attr(data-label);position:absolute;top:-7px;left:7px;font-size:8px;color:rgba(0,190,160,.58);background:rgba(0,6,5,.96);padding:0 4px;letter-spacing:.13em; }
+
+.pbar { display:flex;justify-content:space-between;align-items:center;padding-bottom:6px;border-bottom:1px solid rgba(0,190,160,.1);margin-bottom:3px; }
+.pdot { width:5px;height:5px;border-radius:50%;background:rgba(0,190,160,.85);display:inline-block;margin-right:5px;animation:pdP 2s ease-in-out infinite; }
+@keyframes pdP{0%,100%{opacity:1}50%{opacity:.2}}
+.ptxt { font-size:8px;color:rgba(0,190,160,.52);letter-spacing:.1em; }
+
+.dl   { font-size:9px;color:rgba(0,190,160,.68);letter-spacing:.04em;line-height:1.5;white-space:nowrap;overflow:hidden; }
+.dl.d { color:rgba(0,190,160,.28); }
+.dl.b { color:rgba(0,255,195,1); }
+.dl.w { color:rgba(255,170,0,.82); }
+.dl.h { color:rgba(0,165,255,.52);font-size:8px; }
+.dl.e { color:rgba(255,50,50,.78); }
+
+.sw { overflow:hidden;height:100%; }
+.st { display:flex;flex-direction:column;gap:2px;animation:scrollUp linear infinite; }
+@keyframes scrollUp{0%{transform:translateY(0)}100%{transform:translateY(-50%)}}
+
+.sr { display:flex;align-items:center;gap:4px;margin-bottom:3px; }
+.sl { font-size:8px;color:rgba(0,190,160,.5);width:56px;letter-spacing:.04em; }
+.sb { display:flex;gap:2px; }
+.sbar { width:5px;height:10px;background:rgba(0,190,160,.1); }
+.sbar.on { background:rgba(0,190,160,.8); }
+
+.gr { display:flex;align-items:center;gap:5px;margin-bottom:4px; }
+.gl { font-size:8px;color:rgba(0,190,160,.5);width:56px;letter-spacing:.04em; }
+.gt { flex:1;height:4px;background:rgba(0,190,160,.08); }
+.gf { height:100%;background:rgba(0,190,160,.7);transition:width 2.2s ease; }
+.gv { font-size:8px;color:rgba(0,190,160,.75);width:25px;text-align:right; }
+
+.hg { display:flex;flex-wrap:wrap;gap:2px;padding:2px 0; }
+.hc { width:13px;height:13px;background:rgba(0,190,160,.04);border:1px solid rgba(0,190,160,.09);font-size:6px;color:rgba(0,190,160,.38);display:flex;align-items:center;justify-content:center; }
+
+/* ════════════════════════════════════════════════════════
+   CENTER — message / video / crt layers
+   ════════════════════════════════════════════════════════ */
+#center { flex:1;position:relative;overflow:hidden;background:#020c0c;z-index:1; }
+
+.layer { position:absolute;inset:0;opacity:0;transition:opacity .12s ease;pointer-events:none; }
+.layer.on { opacity:1; }
+
+/* MESSAGE */
+#lMsg { display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:2; }
+.mline { font-size:108px;color:#00d0ac;letter-spacing:.06em;line-height:1.75;text-align:center;text-shadow:0 0 22px rgba(0,205,170,.3);animation:mF 9s ease-in-out infinite; }
+.mline.sub { font-size:69px;color:rgba(0,205,170,.58);margin-top:10px;animation-delay:.5s; }
+@keyframes mF{0%,96%,100%{opacity:1}98%{opacity:.8}}
+
+.ticker { position:absolute;bottom:0;left:0;right:0;height:30px;background:rgba(0,70,60,.13);border-top:1px solid rgba(0,190,160,.15);overflow:hidden;display:flex;align-items:center; }
+.ttrack { display:flex;white-space:nowrap;animation:tS 26s linear infinite; }
+.titem  { font-size:11px;color:rgba(0,200,170,.78);letter-spacing:.07em;padding:0 44px; }
+.tsep   { font-size:11px;color:rgba(0,200,170,.27);padding:0 14px; }
+@keyframes tS{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+
+/* VIDEO */
+#lVid { background:#000;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center; }
+#bvid { height:calc(100% - 44px);width:auto;max-width:100%;object-fit:contain;display:block; }
+.vchrome { position:absolute;left:0;right:0;display:flex;justify-content:space-between;align-items:center;font-size:9px;color:rgba(0,195,165,.45);letter-spacing:.1em;padding:0 10px; }
+.vchrome.t { top:7px; }
+.vchrome.b { bottom:7px; }
+.txd { width:5px;height:5px;border-radius:50%;background:#00d0ac;display:inline-block;margin-right:5px;animation:txP 1s ease-in-out infinite; }
+@keyframes txP{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.2;transform:scale(.5)}}
+
+/* CRT */
+#lCRT { z-index:10;background:#000; }
+#crtC { position:absolute;inset:0;width:100%;height:100%; }
+.crtL { position:absolute;inset:0;background:repeating-linear-gradient(to bottom,transparent 0,transparent 2px,rgba(0,0,0,.52) 2px,rgba(0,0,0,.52) 4px);z-index:5; }
+.crtV { position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 35%,rgba(0,0,0,.96) 100%);z-index:6; }
+.crtF { position:absolute;inset:0;background:rgba(0,155,135,.04);z-index:7;animation:cF .07s step-end infinite; }
+@keyframes cF{0%{opacity:1}33%{opacity:.6}66%{opacity:1}100%{opacity:.8}}
+</style>
+</head>
+<body>
+
+<div id="wrap">
+
+  <!-- ── SCREEN CONTENT ──────────────────────────────── -->
+  <div id="screen">
+
+    <!-- LEFT DATA PANEL — always visible -->
+    <div class="data-panel L">
+      <canvas class="pnoise" id="pnL"></canvas>
+      <div class="pscan"></div>
+      <div class="pglitch"></div>
+      <div class="pin">
+        <div class="pbar">
+          <span><span class="pdot"></span><span class="ptxt">SYS ONLINE</span></span>
+          <span class="ptxt" id="clkP">00:00:00</span>
+        </div>
+        <div class="pblock" data-label="COMM SIGNAL">
+          <div class="sr"><span class="sl">UPLINK</span><div class="sb" id="sUp"></div></div>
+          <div class="sr"><span class="sl">DOWNLINK</span><div class="sb" id="sDn"></div></div>
+          <div class="sr"><span class="sl">QUANTUM</span><div class="sb" id="sQu"></div></div>
+        </div>
+        <div class="pblock" data-label="SYS RESOURCES">
+          <div class="gr"><span class="gl">CPU LOAD</span><div class="gt"><div class="gf" id="gCpu" style="width:72%"></div></div><span class="gv" id="gvCpu">72%</span></div>
+          <div class="gr"><span class="gl">MEM ALLOC</span><div class="gt"><div class="gf" id="gMem" style="width:58%"></div></div><span class="gv" id="gvMem">58%</span></div>
+          <div class="gr"><span class="gl">NET I/O</span><div class="gt"><div class="gf" id="gNet" style="width:34%"></div></div><span class="gv" id="gvNet">34%</span></div>
+          <div class="gr"><span class="gl">ENC KEY</span><div class="gt"><div class="gf" id="gEnc" style="width:91%"></div></div><span class="gv" id="gvEnc">91%</span></div>
+        </div>
+        <div class="pblock grow" data-label="DATA STREAM">
+          <div class="sw"><div class="st" id="stL" style="animation-duration:16s;"></div></div>
+        </div>
+        <div class="pblock" data-label="SECTOR MAP">
+          <div class="hg" id="hxL"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CENTER -->
+    <div id="center">
+      <div id="lMsg" class="layer on">
+        <div class="mline" id="ml1">JOIN<br>Odyssey Interstellar</div>
+	<div class="mline sub" id="ml2">Type  !apply  in chat<br>for briefing.</div>
+        <div class="ticker"><div class="ttrack" id="ttrack"></div></div>
+      </div>
+      <div id="lVid" class="layer">
+        <div class="vchrome t"><span><span class="txd"></span>LIVE TRANSMISSION</span><span id="vidTimer">00:00</span></div>
+        <video id="bvid" playsinline preload="auto">
+          <source src="assets/lory-uplink.mp4" type="video/mp4">
+        </video>
+        <div class="vchrome b"><span>ODYSSEY INTERSTELLAR · STANTON SYSTEM</span><span>BROADCASTING</span></div>
+      </div>
+      <div id="lCRT" class="layer">
+        <canvas id="crtC"></canvas>
+        <div class="crtL"></div><div class="crtV"></div><div class="crtF"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT DATA PANEL — always visible -->
+    <div class="data-panel R">
+      <canvas class="pnoise" id="pnR"></canvas>
+      <div class="pscan"></div>
+      <div class="pglitch" style="animation-delay:-5s"></div>
+      <div class="pin">
+        <div class="pbar">
+          <span class="ptxt">STANTON SYS</span>
+          <span><span class="ptxt">ENCRYPTED</span><span class="pdot" style="margin-left:5px;margin-right:0;background:rgba(255,170,0,.9)"></span></span>
+        </div>
+        <div class="pblock" data-label="IDENT PROTOCOL">
+          <div class="dl b">CLEARANCE : DELTA-7</div>
+          <div class="dl">ORG ID    : <span id="orgId">OI-447-CC</span></div>
+          <div class="dl d">AUTH      : BIOMETRIC</div>
+          <div class="dl w">STATUS    : ACTIVE SESSION</div>
+          <div class="dl d">PROTOCOL  : TLS-QE/256</div>
+        </div>
+        <div class="pblock" data-label="VOICE ANALYSIS">
+          <div style="height:26px;overflow:hidden;">
+            <svg id="wave" viewBox="0 0 288 26" preserveAspectRatio="none" style="width:100%;height:26px;"></svg>
+          </div>
+        </div>
+        <div class="pblock grow" data-label="ACTIVITY LOG">
+          <div class="sw"><div class="st" id="stR" style="animation-duration:20s;"></div></div>
+        </div>
+        <div class="pblock" data-label="FREQ SPECTRUM">
+          <div class="hg" id="hxR"></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /screen -->
+
+  <!-- ── TERMINAL FRAME IMAGE — sits on top of content ──
+       Replace assets/terminal-frame.png with your image.
+       It will stretch to fill 1920×1080 exactly.
+       The screen hole in your image reveals the content below.
+  ─────────────────────────────────────────────────────── -->
+  <img id="frame-overlay" src="assets/terminal-frame.png" alt="">
+
+  <!-- Flash sits above the frame so it's always visible -->
+  <div id="flash"></div>
+
+</div><!-- /wrap -->
+
+<script>
+// ════════════════════════════════════════════════════════
+//  RESPONSIVE SCALING — fits any OBS browser source size
+// ════════════════════════════════════════════════════════
+function rescale() {
+  const s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+  const w = document.getElementById('wrap');
+  w.style.transform = `scale(${s})`;
+  w.style.left = Math.round((window.innerWidth  - 1920 * s) / 2) + 'px';
+  w.style.top  = Math.round((window.innerHeight - 1080 * s) / 2) + 'px';
+}
+window.addEventListener('resize', rescale);
+rescale();
+
+// ════════════════════════════════════════════════════════
+//  CONFIG — URL params with defaults
+// ════════════════════════════════════════════════════════
+const P = new URLSearchParams(window.location.search);
+const CFG = {
+  msgMs      : (parseInt(P.get('msg'))      || 320)  * 1000,
+  vidMs      : (parseInt(P.get('vid'))      || 159)  * 1000,
+  intervalPct:  parseInt(P.get('interval')) || 56,
+  crtMs      : (parseFloat(P.get('crt'))   || 1)     * 1000,
+};
+CFG.intervalMs = CFG.msgMs * (CFG.intervalPct / 100);
+
+// ════════════════════════════════════════════════════════
+//  STATE MACHINE
+// ════════════════════════════════════════════════════════
+const lMsg = document.getElementById('lMsg');
+const lVid = document.getElementById('lVid');
+const lCRT = document.getElementById('lCRT');
+const vid  = document.getElementById('bvid');
+
+let state='idle', stateStart=0, msgAccum=0, msgPhaseStart=0, intervalStart=0;
+let tickH=null, vidTimerH=null;
+
+function showCenter(name) {
+  lMsg.classList.toggle('on', name==='msg');
+  lVid.classList.toggle('on', name==='vid');
+  lCRT.classList.toggle('on', name==='crt');
+}
+
+function flashScreen() {
+  const f = document.getElementById('flash');
+  f.style.opacity = '1';
+  setTimeout(() => f.style.opacity = '0', 90);
+}
+
+function enter(s) {
+  state = s; stateStart = performance.now();
+
+  if (s === 'message') {
+    showCenter('msg');
+    msgPhaseStart = performance.now();
+    intervalStart = performance.now();
+  } else if (s === 'distort_periodic' || s === 'distort_to_video' || s === 'distort_to_msg') {
+    flashScreen(); showCenter('crt');
+  } else if (s === 'video') {
+    showCenter('vid');
+    vid.currentTime = 0;
+    vid.play().catch(e => console.warn('[Broadcast] Video:', e));
+    startVidTimer();
+  }
+}
+
+function tick() {
+  const now = performance.now();
+  if (state === 'message') {
+    const phase = now - msgPhaseStart;
+    const total = msgAccum + phase;
+    const intT  = now - intervalStart;
+    if (total >= CFG.msgMs) {
+      msgAccum = 0; enter('distort_to_video');
+    } else if (CFG.intervalMs > 0 && intT >= CFG.intervalMs) {
+      msgAccum = total; enter('distort_periodic');
+    }
+  } else if (state === 'distort_periodic') {
+    if (now - stateStart >= CFG.crtMs) enter('message');
+  } else if (state === 'distort_to_video') {
+    if (now - stateStart >= CFG.crtMs) enter('video');
+  } else if (state === 'video') {
+    if (now - stateStart >= CFG.vidMs) { stopVidTimer(); enter('distort_to_msg'); }
+  } else if (state === 'distort_to_msg') {
+    if (now - stateStart >= CFG.crtMs) { msgAccum = 0; enter('message'); }
+  }
+}
+
+function startCycle() {
+  if (tickH) clearInterval(tickH);
+  stopVidTimer(); msgAccum = 0;
+  enter('message');
+  tickH = setInterval(tick, 100);
+}
+function stopCycle() {
+  clearInterval(tickH); tickH = null; stopVidTimer();
+}
+
+function startVidTimer() {
+  const el    = document.getElementById('vidTimer');
+  const total = Math.round(CFG.vidMs / 1000);
+  let e = 0;
+  if (vidTimerH) clearInterval(vidTimerH);
+  vidTimerH = setInterval(() => {
+    e++;
+    const r = Math.max(0, total - e);
+    el.textContent = String(Math.floor(r/60)).padStart(2,'0') + ':' + String(r%60).padStart(2,'0');
+  }, 1000);
+}
+function stopVidTimer() {
+  clearInterval(vidTimerH); vidTimerH = null;
+  vid.pause();
+}
+
+// ════════════════════════════════════════════════════════
+//  OBS EYE ICON — stop audio when source is hidden
+//
+//  OBS fires the standard Page Visibility API event when
+//  you click the eye icon to hide a Browser Source.
+//  We pause the video on hide and resume on show (if
+//  we're still in the video state).
+// ════════════════════════════════════════════════════════
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    // Source hidden — pause video immediately
+    vid.pause();
+  } else {
+    // Source shown again — resume only if cycle is in video state
+    if (state === 'video') {
+      vid.play().catch(e => console.warn('[Broadcast] Resume:', e));
+    }
+  }
+});
+
+// ════════════════════════════════════════════════════════
+//  CRT NOISE CANVAS
+// ════════════════════════════════════════════════════════
+(function() {
+  const c = document.getElementById('crtC');
+  const ctx = c.getContext('2d');
+  function sz() { c.width = c.offsetWidth || 800; c.height = c.offsetHeight || 976; }
+  sz();
+  function draw() {
+    const w=c.width, h=c.height, img=ctx.createImageData(w,h), d=img.data;
+    for (let i=0; i<d.length; i+=4) {
+      const v = Math.random() > .91 ? Math.random()*90|0 : 0;
+      d[i]=v; d[i+1]=v; d[i+2]=v; d[i+3]=v?210:0;
+    }
+    ctx.putImageData(img,0,0);
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+// ════════════════════════════════════════════════════════
+//  PANEL NOISE
+// ════════════════════════════════════════════════════════
+function initNoise(id) {
+  const c=document.getElementById(id); c.width=310; c.height=1080;
+  const ctx=c.getContext('2d');
+  function draw() {
+    const img=ctx.createImageData(310,1080), d=img.data;
+    for (let i=0; i<d.length; i+=4) {
+      const v=Math.random()>.976?180:0;
+      d[i]=d[i+1]=d[i+2]=v; d[i+3]=v?160:0;
+    }
+    ctx.putImageData(img,0,0); requestAnimationFrame(draw);
+  }
+  draw();
+}
+initNoise('pnL'); initNoise('pnR');
+
+// ════════════════════════════════════════════════════════
+//  SIGNAL BARS
+// ════════════════════════════════════════════════════════
+function buildSig(id,on) {
+  const el=document.getElementById(id);
+  for (let i=0; i<8; i++) {
+    const b=document.createElement('div');
+    b.className='sbar'+(i<on?' on':'');
+    el.appendChild(b);
+  }
+}
+buildSig('sUp',7); buildSig('sDn',5); buildSig('sQu',6);
+
+// ════════════════════════════════════════════════════════
+//  GAUGES
+// ════════════════════════════════════════════════════════
+function animGauge(fid,vid2,base) {
+  setInterval(() => {
+    const v=Math.max(5,Math.min(99,base+(Math.random()-.5)*16|0));
+    document.getElementById(fid).style.width=v+'%';
+    document.getElementById(vid2).textContent=v+'%';
+  }, 2400);
+}
+animGauge('gCpu','gvCpu',72); animGauge('gMem','gvMem',58);
+animGauge('gNet','gvNet',34); animGauge('gEnc','gvEnc',91);
+
+// ════════════════════════════════════════════════════════
+//  SCROLLING DATA
+// ════════════════════════════════════════════════════════
+const lL=[
+  ['h','0xA3F2 0x11CC 0xBB04'],['d','PKT RECV 1.4ms LAT'],
+  ['','ROUTING: NODE 7-ALPHA'],['h','FF 3A 00 C1 D9 8E'],
+  ['w','ANOMALY @ CH.14'],['','HANDSHAKE OK :: SEC'],
+  ['d','STREAM 0x3F 2048kbps'],['b','SIG LOCKED STANTON-07'],
+  ['h','0xC900 0xAABB 0xFF01'],['','ENCRYPT ACTIVE'],
+  ['d','BURST TX: 4.2MB'],['e','RETRY #3 CH.22 TIMEOUT'],
+  ['','FALLBACK ROUTE OK'],['h','DE AD BE EF 00 11'],
+  ['d','PKT LOSS: 0.02%'],['','UPLINK :: NODE A3'],
+  ['b','AUTH TOKEN REFRESHED'],['h','0xFF04 0x88DE 0x0000'],
+  ['w','SECTOR SCAN ACTIVE'],['d','QUEUE: 12 PACKETS'],
+];
+const lR=[
+  ['b','SESSION INIT OK'],['d','IDENT @ 19:41:03'],
+  ['','TERMINAL ACCESS OK'],['w','PASSIVE SCAN...'],
+  ['h','KEY: 9F2A-004E-771D'],['','VOCAL: 99.7%'],
+  ['d','RETINA: PASSED'],['','STANTON/MRT SYNC'],
+  ['b','RECORDING ACTIVE'],['h','0xF1A3 → 0x00CC'],
+  ['d','BUF: 128/512MB'],['','QE-TLS v4.1'],
+  ['w','UPLINK FLUCTUATION'],['d','H.265 LOSSLESS'],
+  ['','FRAME DROP: 0.0%'],['b','CHANNEL SECURE'],
+  ['h','8B 3F C2 91 7A FF'],['d','4.8Mbps STABLE'],
+];
+const cmap={'h':'h','d':'d','b':'b','w':'w','e':'e','':''};
+function buildScroll(id,lines) {
+  const el=document.getElementById(id);
+  [...lines,...lines].forEach(([c,t])=>{
+    const d=document.createElement('div');
+    d.className='dl'+(c?' '+cmap[c]:'');
+    d.textContent=t; el.appendChild(d);
+  });
+}
+buildScroll('stL',lL); buildScroll('stR',lR);
+
+// ════════════════════════════════════════════════════════
+//  HEX GRIDS
+// ════════════════════════════════════════════════════════
+function buildHex(id,n) {
+  const el=document.getElementById(id), h='0123456789ABCDEF';
+  for (let i=0; i<n; i++) {
+    const c=document.createElement('div'); c.className='hc';
+    c.textContent=h[Math.random()*16|0]+h[Math.random()*16|0];
+    setInterval(()=>{ c.textContent=h[Math.random()*16|0]+h[Math.random()*16|0]; },1800+Math.random()*2500);
+    el.appendChild(c);
+  }
+}
+buildHex('hxL',80); buildHex('hxR',80);
+
+// ════════════════════════════════════════════════════════
+//  WAVEFORM
+// ════════════════════════════════════════════════════════
+(function() {
+  const svg=document.getElementById('wave');
+  let pts=Array.from({length:55},()=>13+(Math.random()-.5)*5);
+  setInterval(()=>{
+    pts.shift(); pts.push(13+(Math.random()-.5)*(Math.random()>.85?20:4));
+    const step=288/(pts.length-1);
+    const p=pts.map((y,i)=>`${(i*step).toFixed(1)},${y.toFixed(1)}`).join(' ');
+    svg.innerHTML=`<polyline points="${p}" fill="none" stroke="rgba(0,190,160,.65)" stroke-width="1"/>`;
+  },80);
+})();
+
+// ════════════════════════════════════════════════════════
+//  ORG ID FLICKER
+// ════════════════════════════════════════════════════════
+const orgIds=['OI-447-CC','OI-812-AA','OI-003-EE','OI-991-BB'];
+let oi=0;
+setInterval(()=>{ oi=(oi+1)%orgIds.length; document.getElementById('orgId').textContent=orgIds[oi]; },7000);
+
+// ════════════════════════════════════════════════════════
+//  CLOCK
+// ════════════════════════════════════════════════════════
+function clk() {
+  const t=[new Date().getUTCHours(),new Date().getUTCMinutes(),new Date().getUTCSeconds()]
+    .map(n=>String(n).padStart(2,'0')).join(':');
+  document.getElementById('clkP').textContent=t;
+}
+setInterval(clk,1000); clk();
+
+// ════════════════════════════════════════════════════════
+//  TICKER
+// ════════════════════════════════════════════════════════
+const tItems=[
+  'JOIN ODYSSEY INTERSTELLAR — STANTON\'S PREMIER MULTI-CREW ORG',
+  'TYPE !apply IN CHAT TO BEGIN YOUR BRIEFING',
+  'ACTIVE OPS: CARGO ESCORT · MINING · BOUNTY HUNTING',
+  'SIGN-ON BONUS: 5,000,000 aUEC FOR ALL NEW RECRUITS',
+  'RECRUITMENT STATUS: OPEN — ALL ROLES AVAILABLE',
+];
+(function() {
+  const t=document.getElementById('ttrack');
+  [...tItems,...tItems].forEach(txt=>{
+    const s=document.createElement('span'); s.className='titem'; s.textContent=txt; t.appendChild(s);
+    const sep=document.createElement('span'); sep.className='tsep'; sep.textContent='◆'; t.appendChild(sep);
+  });
+})();
+
+// ════════════════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════════════════
+window.FleetBroadcast = { startCycle, stopCycle, CFG };
+setTimeout(startCycle, 500);
+</script>
+</body>
+</html>
