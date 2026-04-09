@@ -139,9 +139,17 @@ html, body {
 .tsep   { font-size:11px;color:rgba(0,200,170,.27);padding:0 14px; }
 @keyframes tS{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 
-/* VIDEO */
-#lVid { background:#000;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center; }
-#bvid { height:calc(100% - 44px);width:auto;max-width:100%;object-fit:contain;display:block; }
+/* ── VIDEO — always correct aspect ratio ─────────────────
+   #lVid is the container (position:relative so chrome bars
+   can be absolute inside it).
+   #bvid fills the container absolutely and uses
+   object-fit:contain — the browser letterboxes/pillarboxes
+   the video to preserve its native aspect ratio no matter
+   what shape the center window is.
+   ──────────────────────────────────────────────────────── */
+#lVid { background:#000;z-index:3;position:relative; }
+#bvid { position:absolute;inset:44px 0 44px 0;width:100%;height:calc(100% - 88px);object-fit:contain;display:block; }
+
 .vchrome { position:absolute;left:0;right:0;display:flex;justify-content:space-between;align-items:center;font-size:9px;color:rgba(0,195,165,.45);letter-spacing:.1em;padding:0 10px; }
 .vchrome.t { top:7px; }
 .vchrome.b { bottom:7px; }
@@ -198,7 +206,7 @@ html, body {
     <div id="center">
       <div id="lMsg" class="layer on">
         <div class="mline" id="ml1">JOIN<br>Odyssey Interstellar</div>
-	<div class="mline sub" id="ml2">Type  !apply  in chat<br>for briefing.</div>
+        <div class="mline sub" id="ml2">Type  !apply  in chat<br>for briefing.</div>
         <div class="ticker"><div class="ttrack" id="ttrack"></div></div>
       </div>
       <div id="lVid" class="layer">
@@ -383,10 +391,8 @@ function stopVidTimer() {
 // ════════════════════════════════════════════════════════
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    // Source hidden — pause video immediately
     vid.pause();
   } else {
-    // Source shown again — resume only if cycle is in video state
     if (state === 'video') {
       vid.play().catch(e => console.warn('[Broadcast] Resume:', e));
     }
