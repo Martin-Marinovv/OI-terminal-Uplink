@@ -140,8 +140,8 @@ html, body {
 @keyframes tS{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 
 /* VIDEO */
-#lVid { background:#000;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center; }
-#bvid { height:100%;width:100%;object-fit:cover;display:block; }
+#lVid { background:#000;z-index:3;position:absolute;inset:0; }
+#bvid { position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block; }
 .vchrome { position:absolute;left:0;right:0;display:flex;justify-content:space-between;align-items:center;font-size:9px;color:rgba(0,195,165,.45);letter-spacing:.1em;padding:0 10px; }
 .vchrome.t { top:7px; }
 .vchrome.b { bottom:7px; }
