@@ -12,10 +12,6 @@ html, body {
   background: #000;
 }
 
-/*
-  #wrap scales the 1920×1080 design to fit any OBS window size.
-  JS calculates scale on every resize.
-*/
 #wrap {
   width: 1920px;
   height: 1080px;
@@ -25,10 +21,6 @@ html, body {
   font-family: 'Courier New', monospace;
 }
 
-/* ── SCREEN CONTENT fills the full wrap ──────────────────
-   The terminal-frame.png sits on top as a non-interactive
-   overlay. Content shows through the image's screen hole.
-   ──────────────────────────────────────────────────────── */
 #screen {
   position: absolute;
   inset: 0;
@@ -37,23 +29,18 @@ html, body {
   background: #020c0c;
 }
 
-/* ── TERMINAL FRAME IMAGE — overlay on top of content ─── */
 #frame-overlay {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: fill;   /* stretches to fill exactly 1920×1080 */
+  object-fit: fill;
   pointer-events: none;
   z-index: 50;
   display: block;
 }
-/* Hide gracefully if image fails to load (file not added yet) */
 #frame-overlay[src="assets/terminal-frame.png"]:not([complete]) { opacity: 0; }
 
-/* ── FLASH ───────────────────────────────────────────────
-   Sits above frame overlay so the flash is visible
-   ──────────────────────────────────────────────────────── */
 #flash {
   position: absolute; inset: 0;
   z-index: 60;
@@ -63,7 +50,7 @@ html, body {
 }
 
 /* ════════════════════════════════════════════════════════
-   DATA PANELS — always visible, left and right
+   DATA PANELS
    ════════════════════════════════════════════════════════ */
 .data-panel {
   width: 310px;
@@ -120,7 +107,7 @@ html, body {
 .hc { width:13px;height:13px;background:rgba(0,190,160,.04);border:1px solid rgba(0,190,160,.09);font-size:6px;color:rgba(0,190,160,.38);display:flex;align-items:center;justify-content:center; }
 
 /* ════════════════════════════════════════════════════════
-   CENTER — message / video / crt layers
+   CENTER
    ════════════════════════════════════════════════════════ */
 #center { flex:1;position:relative;overflow:hidden;background:#020c0c;z-index:1; }
 
@@ -139,10 +126,21 @@ html, body {
 .tsep   { font-size:11px;color:rgba(0,200,170,.27);padding:0 14px; }
 @keyframes tS{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 
-/* VIDEO */
+/* ── VIDEO ───────────────────────────────────────────────
+   #lVid fills its layer absolutely (inset:0).
+   #bvid fills it with object-fit:cover — no black bars,
+   edges crop slightly if aspect ratios differ.
+   Three overlays add scanlines, vignette and cyan tint
+   for a realistic in-game screen look.
+   Chrome bars sit at z-index:10 above all overlays.
+   ──────────────────────────────────────────────────────── */
 #lVid { background:#000;z-index:3;position:absolute;inset:0; }
-#bvid { position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block; }
-.vchrome { position:absolute;left:0;right:0;display:flex;justify-content:space-between;align-items:center;font-size:9px;color:rgba(0,195,165,.45);letter-spacing:.1em;padding:0 10px; }
+#bvid { position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;filter:saturate(0.82) contrast(1.06) brightness(0.9); }
+.vid-scan     { position:absolute;inset:0;background:repeating-linear-gradient(to bottom,transparent 0px,transparent 3px,rgba(0,0,0,0.18) 3px,rgba(0,0,0,0.18) 4px);pointer-events:none;z-index:5; }
+.vid-vignette { position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 38%,rgba(0,0,0,0.72) 100%);pointer-events:none;z-index:6; }
+.vid-tint     { position:absolute;inset:0;background:rgba(0,180,160,0.06);pointer-events:none;z-index:7; }
+
+.vchrome { position:absolute;left:0;right:0;display:flex;justify-content:space-between;align-items:center;font-size:9px;color:rgba(0,195,165,.45);letter-spacing:.1em;padding:0 10px;z-index:10; }
 .vchrome.t { top:7px; }
 .vchrome.b { bottom:7px; }
 .txd { width:5px;height:5px;border-radius:50%;background:#00d0ac;display:inline-block;margin-right:5px;animation:txP 1s ease-in-out infinite; }
@@ -161,10 +159,9 @@ html, body {
 
 <div id="wrap">
 
-  <!-- ── SCREEN CONTENT ──────────────────────────────── -->
   <div id="screen">
 
-    <!-- LEFT DATA PANEL — always visible -->
+    <!-- LEFT DATA PANEL -->
     <div class="data-panel L">
       <canvas class="pnoise" id="pnL"></canvas>
       <div class="pscan"></div>
@@ -198,7 +195,7 @@ html, body {
     <div id="center">
       <div id="lMsg" class="layer on">
         <div class="mline" id="ml1">JOIN<br>Odyssey Interstellar</div>
-	<div class="mline sub" id="ml2">Type  !apply  in chat<br>for briefing.</div>
+        <div class="mline sub" id="ml2">Type  !apply  in chat<br>for briefing.</div>
         <div class="ticker"><div class="ttrack" id="ttrack"></div></div>
       </div>
       <div id="lVid" class="layer">
@@ -206,6 +203,9 @@ html, body {
         <video id="bvid" playsinline preload="auto">
           <source src="assets/lory-uplink.mp4" type="video/mp4">
         </video>
+        <div class="vid-scan"></div>
+        <div class="vid-vignette"></div>
+        <div class="vid-tint"></div>
         <div class="vchrome b"><span>ODYSSEY INTERSTELLAR · STANTON SYSTEM</span><span>BROADCASTING</span></div>
       </div>
       <div id="lCRT" class="layer">
@@ -214,7 +214,7 @@ html, body {
       </div>
     </div>
 
-    <!-- RIGHT DATA PANEL — always visible -->
+    <!-- RIGHT DATA PANEL -->
     <div class="data-panel R">
       <canvas class="pnoise" id="pnR"></canvas>
       <div class="pscan"></div>
@@ -247,21 +247,14 @@ html, body {
 
   </div><!-- /screen -->
 
-  <!-- ── TERMINAL FRAME IMAGE — sits on top of content ──
-       Replace assets/terminal-frame.png with your image.
-       It will stretch to fill 1920×1080 exactly.
-       The screen hole in your image reveals the content below.
-  ─────────────────────────────────────────────────────── -->
   <img id="frame-overlay" src="assets/terminal-frame.png" alt="">
-
-  <!-- Flash sits above the frame so it's always visible -->
   <div id="flash"></div>
 
 </div><!-- /wrap -->
 
 <script>
 // ════════════════════════════════════════════════════════
-//  RESPONSIVE SCALING — fits any OBS browser source size
+//  RESPONSIVE SCALING
 // ════════════════════════════════════════════════════════
 function rescale() {
   const s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
@@ -310,7 +303,6 @@ function flashScreen() {
 
 function enter(s) {
   state = s; stateStart = performance.now();
-
   if (s === 'message') {
     showCenter('msg');
     msgPhaseStart = performance.now();
@@ -375,18 +367,11 @@ function stopVidTimer() {
 
 // ════════════════════════════════════════════════════════
 //  OBS EYE ICON — stop audio when source is hidden
-//
-//  OBS fires the standard Page Visibility API event when
-//  you click the eye icon to hide a Browser Source.
-//  We pause the video on hide and resume on show (if
-//  we're still in the video state).
 // ════════════════════════════════════════════════════════
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    // Source hidden — pause video immediately
     vid.pause();
   } else {
-    // Source shown again — resume only if cycle is in video state
     if (state === 'video') {
       vid.play().catch(e => console.warn('[Broadcast] Resume:', e));
     }
