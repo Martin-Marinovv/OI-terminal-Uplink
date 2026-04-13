@@ -219,7 +219,7 @@ html, body { width:100%; height:100%; overflow:hidden; background:#000; }
           <span id="vidTimer">00:00</span>
         </div>
         <div class="qnn-watermark">◈ QNN</div>
-        <video id="bvid" playsinline muted preload="auto"></video>
+        <video id="bvid" playsinline preload="auto"></video>
         <div class="vid-scan"></div><div class="vid-vignette"></div><div class="vid-tint"></div>
         <div class="vchrome b">
           <span>QNN · QUANTUM NEWS NETWORK · STANTON BUREAU</span>
@@ -398,17 +398,23 @@ function enter(s) {
       break;
 
     case 'vid_preroll':
-      // Show video layer with first frame frozen.
-      // muted attribute on <video> guarantees autoplay when preroll ends.
+      // Show video layer with first frame frozen
       showCenter('vid');
       updateSegCounter();
       vid.src = PLAYLIST[videoIdx];
       vid.load();
+      document.getElementById('vidTimer').textContent = '00:00';
+      // Prime autoplay: play() then immediately pause() once data is ready.
+      // This establishes the browser's autoplay permission for this element
+      // so the real play() fires without needing a user gesture.
       vid.addEventListener('loadeddata', function onLoaded() {
         vid.removeEventListener('loadeddata', onLoaded);
         vid.currentTime = 0;
+        vid.play().then(() => {
+          vid.pause();
+          vid.currentTime = 0;
+        }).catch(e => console.warn('[QNN] preroll prime:', e));
       }, { once: true });
-      document.getElementById('vidTimer').textContent = '00:00';
       break;
 
     case 'video':
@@ -457,9 +463,7 @@ function tick() {
     if (now - stateStart >= CFG.prerollMs) enter('video');
 
   } else if (state === 'video') {
-    // video.ended event (below) is the ONLY trigger to leave this state.
-    // No timeout — videos must always play to their natural end.
-    void 0;
+    // video.ended (below) is the ONLY exit — videos always play to their natural end.
 
   } else if (state === 'vid_postroll') {
     if (now - stateStart >= CFG.postrollMs) {
